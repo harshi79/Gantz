@@ -1,0 +1,60 @@
+name: Build Windows app
+
+on:
+  push:
+    branches: [main, "arena/**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Gantz.exe (windows-latest)
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+
+      - name: Generate the icon
+        run: python tools/make_icon.py
+
+      - name: Run the test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Build Gantz.exe
+        run: python -m PyInstaller --noconfirm --clean gantz.spec
+
+      - name: Smoke-test the executable
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "dist\Gantz.exe" -ArgumentList "--smoke-test" -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Gantz.exe --smoke-test exited with $($process.ExitCode)" }
+          Write-Host "Smoke test passed."
+
+      - name: Upload the executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gantz-windows-x64
+          path: dist/Gantz.exe
+          if-no-files-found: error
+
+      - name: Attach the executable to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Gantz.exe
+          generate_release_notes: true

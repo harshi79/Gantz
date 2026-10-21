@@ -1,1 +1,147 @@
 # Gantz
+
+[![Build Windows app](https://github.com/harshi79/Gantz/actions/workflows/build-windows.yml/badge.svg)](https://github.com/harshi79/Gantz/actions/workflows/build-windows.yml)
+
+**A fast, offline file toolkit for Windows.** Bulk rename, find & replace, zip and
+unzip — in one small desktop app. No installer, no account, no internet connection.
+
+<p align="center">
+  <img src="assets/gantz.png" width="128" alt="Gantz icon">
+</p>
+
+---
+
+## What it does
+
+| Tool | What you get |
+| --- | --- |
+| **Rename** | Bulk rename with a **live preview** of every new name. Numbering (`file`, `file1`, `file2`), zero-padding (`IMG_001`), separators, and **copy/move into an output folder** instead of renaming in place. |
+| **Find & Replace** | Search text across folders, see every match **before** anything is written, then replace or delete. Case-sensitive, whole-word and regular-expression modes. Encodings (UTF-8, UTF-8 BOM, UTF-16, CP1252) are preserved. |
+| **Zip** | Compress a whole folder (or just the rows you select) at four compression levels. Shows the exact output path and the unpacked size first. |
+| **Unzip** | Open one archive from Explorer, or point at a folder full of them. **Preview the contents** of each archive before extracting, optionally one subfolder per archive, with password support. |
+
+Everything is undoable: every rename, copy, move, extract and replace is recorded,
+and one click on **Undo last change** (`Ctrl+Z`) puts things back.
+
+## Get the .exe
+
+1. Open the **[Windows build](https://github.com/harshi79/Gantz/actions/workflows/build-windows.yml)**
+   workflow (Actions tab → *Build Windows app*).
+2. Take the newest green run → **Artifacts** → **`Gantz-windows-x64`**.
+3. Unzip it and double-click **`Gantz.exe`**. That's it — nothing to install.
+
+Every build downloads in about 11 MB and is a single portable file: no Python,
+no DLLs to copy, no installer.
+
+Tagged releases (`v2.0.0`) also attach `Gantz.exe` to the **Releases** page.
+
+> The executable is unsigned, so Windows SmartScreen may show
+> "Windows protected your PC" the first time. Choose **More info → Run anyway**.
+> You can also build it yourself from source (see below) if you prefer.
+
+## Use it
+
+- **Input** — choose a folder, or drop in a few individual files (`Add files`).
+  Subfolders and hidden/system/VCS folders (`node_modules`, `.git`, `__pycache__`, …)
+  are skipped automatically, so pointing it at `C:\Users\you` is safe.
+- **Output** — where new files go for *copy*, *move*, *zip* and *unzip*.
+  Left empty, it defaults to the input folder's parent.
+- **Extensions** — optional filter, e.g. `.txt, .csv` (blank = all files).
+  Zip archives are always listed on the Unzip page regardless of the filter.
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+O` | Choose input folder |
+| `Ctrl+Shift+O` | Choose output folder |
+| `Ctrl+Shift+A` | Add individual files |
+| `Ctrl+F` | Jump to Find & Replace |
+| `Ctrl+Enter` | Run the main action on the current page |
+| `Ctrl+Z` | Undo the last change |
+| `F5` | Rescan the input folder |
+
+## Where your data lives
+
+Gantz keeps only two kinds of files on your machine, in
+`%LOCALAPPDATA%\Gantz` (Windows) or `~/.local/share/Gantz` (Linux/macOS):
+
+- `settings.json` — the folders and options you last used.
+- `undo/` — the undo history and the original copies of replaced files.
+  The 25 most recent operations are kept; **Edit → Clear undo history** deletes them.
+
+Nothing is ever uploaded. The app makes no network calls at all.
+
+## Build from source
+
+Requirements: **Python 3.10+** (Tkinter ships with the python.org installer).
+
+```powershell
+# Windows - one click
+.\build.bat
+
+# or step by step
+python -m pip install -r requirements-build.txt
+python tools\make_icon.py
+python -m unittest discover -s tests -v
+python -m PyInstaller --noconfirm --clean gantz.spec
+# -> dist\Gantz.exe
+```
+
+Prefer a folder build (starts faster and trips fewer antivirus heuristics)?
+
+```powershell
+.\build.ps1 -Directory      # -> dist\Gantz\Gantz.exe
+```
+
+Run it straight from source without building:
+
+```bash
+python gantz_gui.py [FOLDER | FILE.zip ...]
+```
+
+## Safety
+
+- **Never overwrites silently.** Existing targets are flagged in the preview and
+  skipped unless you explicitly tick *Overwrite*.
+- **Atomic writes.** Replaced files are written to a temp file and renamed into
+  place, so a crash or power cut cannot leave a half-written file.
+- **Zip-slip protection.** Entries that try to escape the destination
+  (`..\..\Windows\System32\…`) are blocked and reported.
+- **Junk filtering.** `__MACOSX`, `.DS_Store`, `Thumbs.db` and `._*` files are skipped
+  on extraction by default.
+- **Bounded scanning.** Files over 32 MB are not searched/replaced, so a stray
+  database file cannot freeze the app.
+- **Safety around network-ish rows.** Renaming is two-phase when names would swap,
+  so `A→B` and `B→A` at the same time cannot lose data.
+
+## Project layout
+
+```
+gantz_gui.py        Desktop interface (Tkinter, no third-party packages)
+gantz_core.py       Engine: scanning, rename, replace, zip, undo  (GUI-free)
+assets/             App icon (PNG + ICO, generated by tools/make_icon.py)
+tools/make_icon.py  Dependency-free icon generator
+tests/test_core.py  40 unit tests for the engine
+gantz.spec          PyInstaller build definition
+build.ps1 / .bat    Windows build scripts
+.github/workflows/  CI that builds and smoke-tests Gantz.exe
+```
+
+The original command-line scripts (`edit.py`, `rename_files.py`) are still here —
+they remain handy for scripting, but the GUI covers everything they do and more.
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The suite covers natural sorting, extension parsing, Windows-safe filenames,
+the rename planner (including conflicts and name swaps), copy/move modes,
+search & replace with encodings, BOM preservation, zip creation, extraction
+(including malicious paths), and every undo path.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
