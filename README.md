@@ -1,5 +1,7 @@
 # Gantz
 
+[![Build Windows app](https://github.com/harshi79/Gantz/actions/workflows/build-windows.yml/badge.svg)](https://github.com/harshi79/Gantz/actions/workflows/build-windows.yml)
+
 **A fast, offline file toolkit for Windows.** Bulk rename, find & replace, zip and
 unzip — in one small desktop app. No installer, no account, no internet connection.
 
@@ -23,9 +25,13 @@ and one click on **Undo last change** (`Ctrl+Z`) puts things back.
 
 ## Get the .exe
 
-1. Open the **Actions** tab of this repository → **Build Windows app**.
-2. Take the newest green run → **Artifacts** → `Gantz-windows-x64.zip`.
+1. Open the **[Windows build](https://github.com/harshi79/Gantz/actions/workflows/build-windows.yml)**
+   workflow (Actions tab → *Build Windows app*).
+2. Take the newest green run → **Artifacts** → **`Gantz-windows-x64`**.
 3. Unzip it and double-click **`Gantz.exe`**. That's it — nothing to install.
+
+Every build downloads in about 11 MB and is a single portable file: no Python,
+no DLLs to copy, no installer.
 
 Tagged releases (`v2.0.0`) also attach `Gantz.exe` to the **Releases** page.
 

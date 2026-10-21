@@ -57,6 +57,12 @@ DANGER = "#b91c1c"
 UI_FONT = "Segoe UI"
 MONO_FONT = "Consolas"
 
+#: Rows rendered into a table at once. Bigger folders stay fully processed,
+#: the list simply shows the first slice to keep typing and scrolling snappy.
+PREVIEW_ROW_LIMIT = 3000
+#: Above this many files the live preview skips per-file disk lookups.
+PREVIEW_STAT_LIMIT = 3000
+
 PAGES = [
     ("rename", "Rename", "Bulk rename with a live preview"),
     ("find", "Find & Replace", "Search and replace text across files"),
@@ -582,7 +588,7 @@ class GantzApp(tk.Tk):
         self._cancel = threading.Event()
         self._scan_timer: str | None = None
         self._preview_timer: str | None = None
-        self._action_buttons: list[FlatButton] = []
+        self._announce_scan = True
         self._zip_items: list[core.FileInfo] = []
         self._zip_name_auto = True
         self._find_rows: list[core.ReplaceItem] = []
@@ -683,7 +689,9 @@ class GantzApp(tk.Tk):
         FlatButton(actions, text="Open output folder", command=self.open_output).pack(
             side="left", padx=(0, 8)
         )
-        FlatButton(actions, text="Refresh", command=self.scan_now).pack(side="left")
+        FlatButton(actions, text="Refresh", command=lambda: self.scan_now(announce=True)).pack(
+            side="left"
+        )
 
     def _build_source_bar(self) -> None:
         bar = Card(self.content, padding=14)
@@ -1318,8 +1326,9 @@ class GantzApp(tk.Tk):
                 pass
         self._scan_timer = self.after(delay, self.scan_now)
 
-    def scan_now(self) -> None:
+    def scan_now(self, announce: bool = False) -> None:
         self._scan_timer = None
+        self._announce_scan = announce or self._announce_scan
         if self._busy:
             self.schedule_scan(400)
             return
@@ -1329,6 +1338,7 @@ class GantzApp(tk.Tk):
             self.zips = []
             self._files_dirty = True
             self._on_scan_done(([], []))
+            self._announce_scan = False
             return
         wanted = core.parse_extensions(self.ext_var.get())
         union = (wanted | {".zip"}) if wanted else None
@@ -1375,10 +1385,12 @@ class GantzApp(tk.Tk):
         self._update_empty_states()
         self._refresh_visible_page()
         self._update_counts()
-        if files:
-            self.toast(f"{len(files):,} files ready", "info")
-        elif self.input_paths:
+        announce, self._announce_scan = self._announce_scan, False
+        if not files and self.input_paths:
             self.toast("No files matched - check the folder or extension filter", "warn")
+        elif announce and files:
+            self.toast(f"{len(files):,} files ready  ·  {core.human_size(sum(f.size for f in files))}",
+                       "ok")
 
     # ------------------------------------------------------------------- pages
     def show_page(self, key: str) -> None:
@@ -1486,6 +1498,7 @@ class GantzApp(tk.Tk):
             padding=self._int_value(self.rename_padding, 0),
             separator=self.rename_separator.get(),
             sort_by="name",
+            check_existing=len(self.files) <= PREVIEW_STAT_LIMIT,
         )
 
     def refresh_rename_preview(self, force: bool = False) -> None:
@@ -1503,7 +1516,7 @@ class GantzApp(tk.Tk):
 
         rows: list[tuple[tuple, tuple]] = []
         if plan is not None:
-            for item in plan.items:
+            for item in plan.items[:PREVIEW_ROW_LIMIT]:
                 status_text = {
                     "ready": "Ready",
                     "exists": "Name taken",
@@ -1539,6 +1552,8 @@ class GantzApp(tk.Tk):
                 bits.append(f"{plan.conflict_count:,} blocked")
             if plan.unchanged_count:
                 bits.append(f"{plan.unchanged_count:,} unchanged")
+            if len(plan.items) > PREVIEW_ROW_LIMIT:
+                bits.append(f"showing first {PREVIEW_ROW_LIMIT:,}")
             self.rename_summary.configure(text="   ·   ".join(bits), fg=MUTED)
         elif not self.files:
             self.rename_summary.configure(text="No files loaded", fg=MUTED)
@@ -1669,7 +1684,7 @@ class GantzApp(tk.Tk):
         self._find_rows: list[core.ReplaceItem] = []
         if plan is not None:
             for item in plan.items:
-                if not item.matches:
+                if not item.matches or len(rows) >= PREVIEW_ROW_LIMIT:
                     continue
                 preview = ""
                 if item.previews:
@@ -1692,6 +1707,8 @@ class GantzApp(tk.Tk):
             summary = f"{plan.total_matches:,} matches   ·   {plan.matching_files:,} files"
             if skipped:
                 summary += f"   ·   {skipped:,} skipped"
+            if plan.matching_files > PREVIEW_ROW_LIMIT:
+                summary += f"   ·   showing first {PREVIEW_ROW_LIMIT:,}"
             self.find_summary.configure(text=summary, fg=MUTED)
         else:
             self.find_summary.configure(text="", fg=MUTED)
@@ -1791,14 +1808,14 @@ class GantzApp(tk.Tk):
                 (info.name, str(info.path.parent), core.human_size(info.size), info.modified),
                 (),
             )
-            for info in self.files
+            for info in self.files[:PREVIEW_ROW_LIMIT]
         ]
         self._render_rows(self.zip_tree, rows)
         total = sum(info.size for info in self.files)
-        self.zip_summary.configure(
-            text=f"{len(self.files):,} files   ·   {core.human_size(total)} total",
-            fg=MUTED,
-        )
+        summary = f"{len(self.files):,} files   ·   {core.human_size(total)} total"
+        if len(self.files) > PREVIEW_ROW_LIMIT:
+            summary += f"   ·   showing first {PREVIEW_ROW_LIMIT:,}"
+        self.zip_summary.configure(text=summary, fg=MUTED)
         self._update_zip_hint()
         self._update_empty_states()
 
@@ -2271,7 +2288,7 @@ class GantzApp(tk.Tk):
         edit_menu.add_command(label="Clear undo history", command=self.clear_undo_history)
         edit_menu.add_separator()
         edit_menu.add_command(label="Refresh file list", accelerator="F5",
-                              command=self.scan_now)
+                              command=lambda: self.scan_now(announce=True))
         menubar.add_cascade(label="Edit", menu=edit_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0, font=(UI_FONT, 9))
@@ -2288,7 +2305,7 @@ class GantzApp(tk.Tk):
         self.bind("<Control-Shift-O>", self._shortcut(self.browse_output))
         self.bind("<Control-z>", self._shortcut(self.undo_last))
         self.bind("<Control-Z>", self._shortcut(self.undo_last))
-        self.bind("<F5>", self._shortcut(self.scan_now))
+        self.bind("<F5>", self._shortcut(lambda: self.scan_now(announce=True)))
         self.bind("<Control-f>", self._shortcut(self._focus_find))
         self.bind("<Control-F>", self._shortcut(self._focus_find))
         self.bind("<Control-Return>", self._shortcut(self._primary_action))

@@ -629,12 +629,14 @@ def build_rename_plan(
     padding: int = 0,
     separator: str = "",
     sort_by: str = "name",
+    check_existing: bool = True,
 ) -> RenamePlan:
     """Create a rename preview without touching the filesystem.
 
     ``numbering`` is one of ``all`` (every file gets a number), ``after_first``
     (``yori.ext``, ``yori1.ext``, ... - the original Gantz behaviour) or
-    ``none``.
+    ``none``.  Set ``check_existing=False`` to skip the per-file disk lookup
+    for very large folders; the apply step still refuses to clobber files.
     """
     clean_prefix = sanitize_component(prefix)
     if not clean_prefix:
@@ -686,6 +688,8 @@ def build_rename_plan(
         for item in plan.items
         if item.status in ("ready", "exists") and item.target != item.source
     }
+    if not check_existing:
+        return plan
     for item in plan.items:
         if item.status != "ready":
             continue
