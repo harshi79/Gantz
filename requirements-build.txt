@@ -1,0 +1,2 @@
+# Only needed to build the executable - Gantz itself has no dependencies.
+pyinstaller>=6.6,<7
